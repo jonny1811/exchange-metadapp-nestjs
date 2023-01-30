@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { CreateWalletDto } from './dto/create-wallet.dto';
+import { WithdrawDto } from './dto/withdraw.dto';
 
 @Controller('wallet')
 export class WalletController {
@@ -33,5 +34,15 @@ export class WalletController {
   @Get('all')
   wallets(@Request() req) {
     return this.walletService.getWallets(req.user.email);
+  }
+
+  @UseGuards(AuthenticatedGuard)
+  @Post('withdraw')
+  withdraw(
+	@Request() req,
+	@Body() withdrawDto: WithdrawDto
+) {
+    withdrawDto.email = req.user.email;
+	return this.walletService.withdraw(withdrawDto);
   }
 }
