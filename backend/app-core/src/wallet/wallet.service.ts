@@ -9,6 +9,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { CreateWalletDto } from './dto/create-wallet.dto';
 import { QueryDto } from './dto/query.dto';
 import { Model, Types } from 'mongoose';
+import { WithdrawDto } from './dto/withdraw.dto';
+import { InjectQueue } from '@nestjs/bullmq';
+import { default as QueueType } from './queue/types.queue';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class WalletService {
@@ -17,6 +21,7 @@ export class WalletService {
     @InjectModel(Wallet.name) private walletModel: Model<WalletDocument>,
     @InjectModel(WalletContract.name)
     private walletContractModel: Model<WalletContractDocument>,
+    @InjectQueue(QueueType.WITHDRAW_REQUEST) private withdrawQueue: Queue,
   ) {}
 
   async create(createWalletDto: CreateWalletDto) {
@@ -137,7 +142,7 @@ export class WalletService {
   }
 
   async getWallets(email: string) {
-	const data = await this.userModel
+    const data = await this.userModel
       .aggregate([
         { $match: { email } },
         { $unwind: '$wallets' },
@@ -158,16 +163,27 @@ export class WalletService {
       ])
       .exec();
 
-	  if (data && data.length > 0) {
-		return data.map(wallet => {
-			return {
-				balance: wallet.walletsData[0].balance,
-				address: wallet.walletsData[0].address,
-				coin: wallet.walletsData[0].coin,
-				chainId: wallet.walletsData[0].chainId,
-				walletId: wallet.walletsData[0]._id
-			}
-		});
-	  }
+    if (data && data.length > 0) {
+      return data.map((wallet) => {
+        return {
+          balance: wallet.walletsData[0].balance,
+          address: wallet.walletsData[0].address,
+          coin: wallet.walletsData[0].coin,
+          chainId: wallet.walletsData[0].chainId,
+          walletId: wallet.walletsData[0]._id,
+        };
+      });
+    }
+  }
+
+  async withdraw(withdrawDto: WithdrawDto) {
+    const withdrawRequest = await this.withdrawQueue.add('request', {
+		transactionId: 'test_id:transaction',
+		walletId: 'test_id:wallet',
+		amount: withdrawDto.amount,
+		withdrawAddress: withdrawDto.to,
+	});
+
+	return withdrawRequest.asJSON();
   }
 }
