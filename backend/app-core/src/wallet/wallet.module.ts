@@ -18,6 +18,7 @@ import {
 } from './schemas/wallet-contract.schema';
 import { BullModule } from '@nestjs/bullmq';
 import { default as QueueType } from './queue/types.queue';
+import { Transaction, TransactionSchema } from '../transaction/schemas/transaction.schema';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { default as QueueType } from './queue/types.queue';
       { name: Wallet.name, schema: WalletSchema },
       { name: User.name, schema: UserSchema },
       { name: WalletContract.name, schema: WalletContractSchema },
+	  { name: Transaction.name, schema: TransactionSchema }
     ]),
 	BullModule.registerQueue({
 		name: QueueType.WITHDRAW_REQUEST

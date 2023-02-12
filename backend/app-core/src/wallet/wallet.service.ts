@@ -1,18 +1,23 @@
+import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Model, Types } from 'mongoose';
+import { Queue } from 'bullmq';
+import { uuid } from 'uuidv4';
+import { CreateWalletDto } from './dto/create-wallet.dto';
+import { QueryDto } from './dto/query.dto';
+import { WithdrawDto } from './dto/withdraw.dto';
+import { default as QueueType } from './queue/types.queue';
 import {
   WalletContract,
   WalletContractDocument,
 } from './schemas/wallet-contract.schema';
 import { Wallet, WalletDocument } from './schemas/wallet.schema';
 import { User, UserDocument } from './../user/schemas/user.schema';
-import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { CreateWalletDto } from './dto/create-wallet.dto';
-import { QueryDto } from './dto/query.dto';
-import { Model, Types } from 'mongoose';
-import { WithdrawDto } from './dto/withdraw.dto';
-import { InjectQueue } from '@nestjs/bullmq';
-import { default as QueueType } from './queue/types.queue';
-import { Queue } from 'bullmq';
+import {
+  Transaction,
+  TransactionDocument,
+} from '../transaction/schemas/transaction.schema';
 
 @Injectable()
 export class WalletService {
@@ -21,6 +26,8 @@ export class WalletService {
     @InjectModel(Wallet.name) private walletModel: Model<WalletDocument>,
     @InjectModel(WalletContract.name)
     private walletContractModel: Model<WalletContractDocument>,
+    @InjectModel(Transaction.name)
+    private transactionModel: Model<TransactionDocument>,
     @InjectQueue(QueueType.WITHDRAW_REQUEST) private withdrawQueue: Queue,
   ) {}
 
@@ -177,13 +184,80 @@ export class WalletService {
   }
 
   async withdraw(withdrawDto: WithdrawDto) {
-    const withdrawRequest = await this.withdrawQueue.add('request', {
-		transactionId: 'test_id:transaction',
-		walletId: 'test_id:wallet',
-		amount: withdrawDto.amount,
-		withdrawAddress: withdrawDto.to,
-	});
+    const data = await this.userModel
+      .aggregate([
+        { $match: { email: withdrawDto.email } },
+        { $unwind: '$wallets' },
+        { $project: { _id: 0 } },
+        {
+          $lookup: {
+            from: 'wallets',
+            localField: 'wallets',
+            foreignField: '_id',
+            as: 'walletsData',
+            pipeline: [
+              {
+                $match: { coin: withdrawDto.coin },
+              },
+            ],
+          },
+        },
+      ])
+      .exec();
 
-	return withdrawRequest.asJSON();
+    if (data && data.length > 0) {
+      let wallet = data.find((w) => w.walletsData.length > 0);
+      if (wallet) {
+        wallet = wallet.walletsData[0];
+        const data = await this.walletModel
+          .findOne(
+            { _id: new Types.ObjectId(wallet._id) },
+            { _id: 0, transactions: 0, __v: 0 },
+          )
+          .exec();
+
+        if (data && data.balance >= withdrawDto.amount) {
+          const transaction = new this.transactionModel({
+            nature: 2,
+            amount: -1 * withdrawDto.amount,
+            created_at: Date.now(),
+            status: 1,
+            txHash: uuid(),
+            to: withdrawDto.to,
+          });
+
+          const saved = await transaction.save();
+
+          if (saved) {
+            const result = await this.walletModel.updateOne(
+              { _id: new Types.ObjectId(wallet._id) },
+              {
+                $push: { transactions: transaction },
+                $inc: { balance: transaction.amount },
+              },
+            );
+
+            if (result) {
+              await this.withdrawQueue.add('request', {
+                transactionId: transaction._id.toString(),
+                walletId: wallet._id.toString(),
+                amount: withdrawDto.amount,
+                withdrawAddress: withdrawDto.to,
+              });
+
+              return {
+                error: null,
+                data: 'success',
+              };
+            }
+          }
+        } else {
+          return {
+            error: true,
+            msg: 'Insuficient balance',
+          };
+        }
+      }
+    }
   }
 }
