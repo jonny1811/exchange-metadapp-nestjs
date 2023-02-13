@@ -4,6 +4,7 @@ const Transaction = require(`${appRoot}/config/models/Transaction`)
 const Wallet = require(`${appRoot}/config/models/Wallet`)
 const User = require(`${appRoot}/config/models/User`)
 const coins = require(`${appRoot}/config/coins/info`)
+const { sendWithdrawEmail } = require('../notifications/mailService')
 const Web3 = require('web3')
 
 let web3
@@ -31,7 +32,7 @@ const _checkConfirmation = async (address, txHash, value, coin, chainId, transac
         await _updateTransactionState(transactionId, 3)
         const wallet = await Wallet.findOne({ transactions: ObjectId(transactionId) })
         const user = await User.findOne({ wallets: ObjectId(wallet._id) })
-        //sendWithdrawEmail(value / 10 ** coins[coin.toUpperCase()].decimals, coin, address, txHash, user.email)
+        sendWithdrawEmail(value / 10 ** coins[coin.toUpperCase()].decimals, coin, address, txHash, user.email)
         return 'withdrawed'
     }
 

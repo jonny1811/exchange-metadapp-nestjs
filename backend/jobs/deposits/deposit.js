@@ -1,7 +1,7 @@
 const appRoot = require('app-root-path')
 const ObjectId = require('mongoose').Types.ObjectId
 const Web3 = require('web3')
-// const { sendDepositEmail } = require('../notifications/mailService')
+const { sendDepositEmail } = require('../notifications/mailService')
 
 const Transaction = require(`${appRoot}/config/models/Transaction`)
 const Wallet = require(`${appRoot}/config/models/Wallet`)
@@ -41,13 +41,13 @@ const _deposit = async (transactionId, chainId, coin, address, value) => {
 
     if (result) {
         await _updateTransactionState(transactionId, 3, value)
-       /*  const wallet = await Wallet.findOne({
+        const wallet = await Wallet.findOne({
             transactions: ObjectId(transactionId)
         })
         const user = await User.findOne({
             wallets: ObjectId(wallet._id)
         })
-        sendDepositEmail(value, coin, user.email) */
+        sendDepositEmail(value, coin, user.email)
         return 'deposit'
     } else {
         await _updateTransactionState(transactionId, 4)
